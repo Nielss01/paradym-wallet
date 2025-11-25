@@ -1,4 +1,4 @@
-name: iOS E2E via EAS local
+name: iOS E2E via Xcodebuild
 
 on:
   workflow_dispatch:
@@ -8,74 +8,40 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Node.js (match EAS base config)
+      - name: Set up Node + pnpm
         uses: actions/setup-node@v4
         with:
-          node-version: 20.11.1
+          node-version: 20
+      - run: corepack enable
 
-      - name: Enable corepack (pnpm)
-        run: corepack enable
-
-      - name: Install dependencies
+      - name: Install JS deps
         run: pnpm install
 
-      - name: Build iOS simulator app with EAS local
+      - name: Prebuild app
         working-directory: apps/easypid
+        run: pnpm prebuild
+
+      - name: Install CocoaPods
+        working-directory: apps/easypid/ios
+        run: pod install
+
+      - name: Build iOS app (simulator)
+        working-directory: apps/easypid/ios
         run: |
-          set -euo pipefail
+          xcodebuild \
+            -workspace ParadymWalletDev.xcworkspace \
+            -scheme ParadymWalletDev \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            -derivedDataPath build \
+            clean build
 
-          # Zorg dat eas-cli beschikbaar is via pnpm dlx
-          pnpm dlx eas-cli@latest build \
-            --local \
-            --non-interactive \
-            --platform ios \
-            --profile paradym-preview-simulator
-
-      - name: Extract .app from EAS build
-        working-directory: apps/easypid
-        run: |
-          set -euo pipefail
-
-          echo "Looking for EAS local build archive in ./dist"
-
-          if [ ! -d "dist" ]; then
-            echo "❌ dist directory not found in apps/easypid"
-            ls -R
-            exit 1
-          fi
-
-          BUILD_ARCHIVE=$(find dist -type f -name "*.tar.gz" | sort | tail -n 1)
-
-          if [ -z "$BUILD_ARCHIVE" ]; then
-            echo "❌ No .tar.gz build archive found in dist"
-            ls -R dist || true
-            exit 1
-          fi
-
-          echo "Found build archive: $BUILD_ARCHIVE"
-
-          # Extract naar een aparte map
-          rm -rf dist/extracted
-          mkdir -p dist/extracted
-
-          tar -xzf "$BUILD_ARCHIVE" -C dist/extracted
-
-          APP_REL_PATH=$(find dist/extracted -maxdepth 6 -name "*.app" -type d | head -n 1)
-
-          if [ -z "$APP_REL_PATH" ]; then
-            echo "❌ No .app found inside extracted archive"
-            ls -R dist/extracted || true
-            exit 1
-          fi
-
-          APP_PATH="$PWD/$APP_REL_PATH"
-          echo "Found .app at: $APP_PATH"
-
-          # Zet APP_PATH in GITHUB_ENV zodat volgende stappen 'm zien
-          echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          APP_PATH=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 2 -name "*.app" -type d | head -n 1)
+          echo "APP_PATH=$(pwd)/$APP_PATH" >> "$GITHUB_ENV"
 
       - name: Launch iOS simulator
         uses: futureware-tech/simulator-action@v4
@@ -84,26 +50,5 @@ jobs:
 
       - name: Install app on simulator
         run: |
-          set -euo pipefail
-
-          if [ -z "${APP_PATH:-}" ]; then
-            echo "❌ APP_PATH is empty or not set"
-            exit 1
-          fi
-
-          echo "Using APP_PATH: $APP_PATH"
-
-          # Zoek de booted iPhone 15 simulator die de action gestart heeft
           DEVICE_UDID=$(xcrun simctl list devices | awk -F '[()]' '/iPhone 15/ && /Booted/ {print $2; exit}')
-
-          if [ -z "$DEVICE_UDID" ]; then
-            echo "❌ No booted iPhone 15 simulator found."
-            xcrun simctl list devices
-            exit 1
-          fi
-
-          echo "Installing app on simulator $DEVICE_UDID"
           xcrun simctl install "$DEVICE_UDID" "$APP_PATH"
-
-      #     set -euo pipefail
-      #     maestro test ./ios-flow.yaml
