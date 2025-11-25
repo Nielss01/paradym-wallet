@@ -28,27 +28,39 @@ jobs:
         working-directory: apps/easypid/ios
         run: pod install
 
-      - name: Build iOS app (simulator)
+      - name: Build iOS app for simulator with xcodebuild
         working-directory: apps/easypid/ios
         run: |
+          set -euo pipefail
+      
           xcodebuild \
             -workspace ParadymWalletDev.xcworkspace \
             -scheme ParadymWalletDev \
             -configuration Debug \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 15' \
+            -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build \
             clean build
-
+      
           APP_PATH=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 2 -name "*.app" -type d | head -n 1)
-          echo "APP_PATH=$(pwd)/$APP_PATH" >> "$GITHUB_ENV"
+      
+          if [ -z "$APP_PATH" ]; then
+            echo "❌ No .app found in build output"
+            ls -R build/Build/Products || true
+            exit 1
+          fi
+      
+          echo "Found .app at: $APP_PATH"
+          APP_ABS_PATH="$(pwd)/$APP_PATH"
+          echo "APP_PATH=$APP_ABS_PATH" >> "$GITHUB_ENV"
+
 
       - name: Launch iOS simulator
         uses: futureware-tech/simulator-action@v4
         with:
-          model: 'iPhone 15'
+          model: 'iPhone 16'
 
       - name: Install app on simulator
         run: |
-          DEVICE_UDID=$(xcrun simctl list devices | awk -F '[()]' '/iPhone 15/ && /Booted/ {print $2; exit}')
+          DEVICE_UDID=$(xcrun simctl list devices | awk -F '[()]' '/iPhone 16/ && /Booted/ {print $2; exit}')
           xcrun simctl install "$DEVICE_UDID" "$APP_PATH"
