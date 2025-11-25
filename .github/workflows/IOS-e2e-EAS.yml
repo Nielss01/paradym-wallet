@@ -38,25 +38,18 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "Looking for EAS local build archive in ./dist"
+          echo "Looking for EAS local build archive (build-*.tar.gz) in current directory"
 
-          if [ ! -d "dist" ]; then
-            echo "❌ dist directory not found in apps/easypid"
-            ls -R
-            exit 1
-          fi
-
-          BUILD_ARCHIVE=$(find dist -type f -name "*.tar.gz" | sort | tail -n 1)
+          BUILD_ARCHIVE=$(find . -maxdepth 2 -type f -name "build-*.tar.gz" | sort | tail -n 1)
 
           if [ -z "$BUILD_ARCHIVE" ]; then
-            echo "❌ No .tar.gz build archive found in dist"
-            ls -R dist || true
+            echo "❌ No local EAS build archive (build-*.tar.gz) found"
+            ls -R
             exit 1
           fi
 
           echo "Found build archive: $BUILD_ARCHIVE"
 
-          # Extract naar een aparte map
           rm -rf dist/extracted
           mkdir -p dist/extracted
 
@@ -73,8 +66,8 @@ jobs:
           APP_PATH="$PWD/$APP_REL_PATH"
           echo "Found .app at: $APP_PATH"
 
-          # Zet APP_PATH in GITHUB_ENV zodat volgende stappen 'm zien
           echo "APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+
 
       - name: Launch iOS simulator
         uses: futureware-tech/simulator-action@v4
