@@ -85,7 +85,6 @@ jobs:
 
           echo "Using APP_PATH: $APP_PATH"
 
-          # Zoek de booted iPhone 15 simulator die de action gestart heeft
           DEVICE_UDID=$(xcrun simctl list devices | awk -F '[()]' '/iPhone 16/ && /Booted/ {print $2; exit}')
 
           if [ -z "$DEVICE_UDID" ]; then
@@ -96,5 +95,4 @@ jobs:
 
           echo "Installing app on simulator $DEVICE_UDID"
           xcrun simctl install "$DEVICE_UDID" "$APP_PATH"
-      #     maestro test ./ios-flow.yaml
 
