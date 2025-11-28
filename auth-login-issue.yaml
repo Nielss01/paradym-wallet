@@ -1,0 +1,50 @@
+appId: id.paradym.wallet.preview
+---
+# - runFlow: auth-none-issue.yaml
+
+- runScript:
+    file: scripts/getDeeplink.js
+    env:
+      requestUrl: "https://funke.animo.id/api/offers/create"
+      AUTH_TYPE: "browser"
+      CREDENTIAL_ID: "mobile-drivers-license-mdoc"
+- openLink:
+    link: ${output.deeplink}
+
+- repeat:
+    while:
+      visible: "Enter your app PIN code"
+    commands:
+      - tapOn: "Pin number 1"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- tapOn: "Yes, continue"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- assertVisible: Verify your account
+- tapOn: "Authenticate"
+
+- waitForAnimationToEnd:
+    timeout: 5000
+
+- assertVisible: “ParadymWalletPreview” Wants to Use “animo.id” to Sign In
+- tapOn: Continue
+#Hier moet iets komen om die pop up te kunnen fixen
+# - tapOn: "Authorize"
+# - tapOn: Continue 
+- tapOn:
+    point: 0%,0%
+
+
+
+- assertVisible: Is the information correct?
+- tapOn: Accept
+- assertVisible: Success!
+- tapOn: "Go to wallet  "
+- assertVisible: Hello!
+
+
