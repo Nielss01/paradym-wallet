@@ -1,15 +1,15 @@
 appId: id.paradym.wallet.preview
 ---
-- runFlow: auth-none-issue.yaml
+# - runFlow: auth-none-issue.yaml
 
 - runScript:
     file: scripts/getDeeplink.js
     env:
       requestUrl: "https://funke.animo.id/api/offers/create"
-      AUTH_TYPE: "browser"
+      AUTH_TYPE: "pin"
       CREDENTIAL_ID: "mobile-drivers-license-mdoc"
 - openLink:
-    link: ${output.loginCode}
+    link: ${output.deeplink}
 
 - repeat:
     while:
