@@ -1,0 +1,90 @@
+name: iOS E2E via Xcodebuild cached
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ios-e2e:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node + pnpm (with cache)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            apps/**/pnpm-lock.yaml
+      - run: corepack enable
+
+      - name: Install JS deps
+        run: pnpm install
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/easypid/ios/Pods
+            ~/.cocoapods
+            ~/Library/Caches/CocoaPods
+          key: ${{ runner.os }}-pods-${{ hashFiles('apps/easypid/ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-
+
+      - name: Install CocoaPods
+        working-directory: apps/easypid/ios
+        run: pod install
+
+      - name: Prebuild app
+        working-directory: apps/easypid
+        run: pnpm prebuild
+
+      - name: Cache Xcode DerivedData
+        uses: actions/cache@v4
+        with:
+          path: apps/easypid/ios/build
+          key: ${{ runner.os }}-deriveddata-${{ hashFiles('apps/easypid/ios/Podfile.lock', 'apps/easypid/ios/ParadymWalletDev.xcodeproj/project.pbxproj') }}
+          restore-keys: |
+            ${{ runner.os }}-deriveddata-
+
+      - name: Build iOS app for simulator with xcodebuild
+        working-directory: apps/easypid/ios
+        run: |
+          set -euo pipefail
+      
+          xcodebuild \
+            -workspace ParadymWalletDev.xcworkspace \
+            -scheme ParadymWalletDev \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -derivedDataPath build \
+            -parallelizeTargets \
+            -jobs 4 \
+            build
+
+          APP_PATH=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 2 -name "*.app" -type d | head -n 1)
+      
+          if [ -z "$APP_PATH" ]; then
+            echo "❌ No .app found in build output"
+            ls -R build/Build/Products || true
+            exit 1
+          fi
+      
+          echo "Found .app at: $APP_PATH"
+          APP_ABS_PATH="$(pwd)/$APP_PATH"
+          echo "APP_PATH=$APP_ABS_PATH" >> "$GITHUB_ENV"
+
+      - name: Launch iOS simulator
+        uses: futureware-tech/simulator-action@v4
+        with:
+          model: 'iPhone 16'
+
+      - name: Install app on simulator
+        run: |
+          DEVICE_UDID=$(xcrun simctl list devices | awk -F '[()]' '/iPhone 16/ && /Booted/ {print $2; exit}')
+          xcrun simctl install "$DEVICE_UDID" "$APP_PATH"
