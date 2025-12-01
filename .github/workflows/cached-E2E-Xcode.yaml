@@ -11,7 +11,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Node + pnpm (with cache)
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Set up Node (with pnpm cache)
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -19,11 +25,6 @@ jobs:
           cache-dependency-path: |
             pnpm-lock.yaml
             apps/**/pnpm-lock.yaml
-
-      - name: Setup pnpm via corepack
-        run: |
-          corepack enable
-          corepack prepare pnpm@latest --activate
 
       - name: Install JS deps
         run: pnpm install
