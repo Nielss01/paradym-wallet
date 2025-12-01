@@ -1,4 +1,4 @@
-name: iOS E2E via EAS local
+name: iOS E2E via EAS cached
 
 on:
   workflow_dispatch:
