@@ -19,7 +19,11 @@ jobs:
           cache-dependency-path: |
             pnpm-lock.yaml
             apps/**/pnpm-lock.yaml
-      - run: corepack enable
+
+      - name: Setup pnpm via corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@latest --activate
 
       - name: Install JS deps
         run: pnpm install
