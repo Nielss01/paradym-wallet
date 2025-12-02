@@ -34,13 +34,17 @@ appId: id.paradym.wallet.preview
 - assertVisible: “ParadymWalletPreview” Wants to Use “animo.id” to Sign In
 - tapOn: Continue
 
-#Hier moet iets komen om die pop up te kunnen fixen
-# - tapOn: "Authorize"
-# - tapOn: Continue 
+- inputText: "test"
 - tapOn:
-    point: 0%,0%
+    point: 50%,40%
+- inputText: "test"
+- tapOn:
+    point: 50%,45%
+- tapOn:
+    point: 50%,40%
 
-
+- waitForAnimationToEnd:
+    timeout: 5000
 
 - assertVisible: Is the information correct?
 - tapOn: Accept
