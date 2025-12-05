@@ -38,41 +38,151 @@ function request() {
 output.request = request();
 
 function callParadymBackend(action) {
-  const body = JSON.stringify({
-    credentialSupportedIds: [action.credentialId],
-    authorization: action.authType,
-    requireDpop: false,
-    requireWalletAttestation: false,
-    requireKeyAttestation: false
-  });
+  const baseUrl = PARADYM_REQUEST_URL || "https://api.paradym.id";
+  const projectId = "cmipr5x5x00l6s6018op8cbci";
+  const flow = action.flow;
 
-  const response = http.post(PARADYM_REQUEST_URL, {
+  let url;
+  let body;
+
+  if (action.action === "createOffer") {
+    url = `${baseUrl}/v1/projects/${projectId}/${flow}/issuance/offer`;
+
+    body = JSON.stringify({
+      credentials: [
+        {
+          credentialTemplateId: "cmiripaap0026s601f95yqz79",
+          attributes: { name: "Niels" },
+        },
+      ],
+    });
+  }
+
+  if (action.action === "createVerification") {
+    url = `${baseUrl}/v1/projects/${projectId}/${flow}/verification/request`;
+
+    body = JSON.stringify({
+      presentationTemplateId: "cmiropet7005os601nhd8w0ur", // hardcoded for now
+    });
+  }
+
+  if (!url || !body) {
+    throw new Error("Unsupported action: " + action.action);
+  }
+
+  const response = http.post(url, {
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": PARADYM_API_KEY
+      "x-access-token": PARADYM_API_KEY,
     },
-    body
+    body,
   });
 
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(`Paradym error: ${response.status} ${response.body || ""}`);
+  }
+
   const data = json(response.body);
-  if (!data || !data.issuanceSession) throw new Error("issuanceSession missing");
+  if (!data) {
+    throw new Error("Empty response from Paradym backend");
+  }
 
-  const issuanceSession = data.issuanceSession;
-  const uri =
-    issuanceSession.credentialOfferUri ||
-    issuanceSession.credential_offer_uri;
-  if (!uri) throw new Error("credentialOfferUri missing in issuanceSession");
+  if (action.action === "createVerification") {
+    return parseParadymVerificationResponse(data);
+  }
 
-  const deeplink =
-    "openid-credential-offer://?credential_offer_uri=" +
-    encodeURIComponent(uri);
+  return parseParadymOfferResponse(data);
+}
+
+
+
+function parseParadymOfferResponse(data) {
+  const offerQrUri = data.offerUri
+  if (!offerQrUri) {
+    throw new Error("offerQrUri missing in Paradym response");
+  }
+
+  let credentialOfferUri = null;
+  let openidDeeplink = null;
+
+  try {
+    const match = offerQrUri.match(/[?&]credential_offer_uri=([^&]+)/);
+
+    if (!match || !match[1]) {
+      throw new Error("credential_offer_uri missing in offerQrUri");
+    }
+
+    credentialOfferUri = decodeURIComponent(match[1]);
+
+    openidDeeplink =
+      "openid-credential-offer://?credential_offer_uri=" +
+      encodeURIComponent(credentialOfferUri);
+
+    console.log("credentialOfferUri:", credentialOfferUri);
+    console.log("openidDeeplink:", openidDeeplink);
+  } catch (e) {
+    throw new Error("Could not create the deeplink: " + e.message);
+  }
+
+
+  const deeplink = openidDeeplink
+  console.log9("deeplink", deeplink)
 
   return {
-    deeplink,
-    userPin: issuanceSession.userPin || null,
-    loginCode: issuanceSession.authorization?.issuerState || null
+    type: "offer",
+    id: data.id,
+    deeplink
   };
 }
+
+function parseParadymVerificationResponse(data) {
+  if (!data) {
+    throw new Error("Empty response from verification request");
+  }
+
+  // Probeer eerst alle mogelijke velden:
+  const directUri =
+    data.authorizationRequestUri
+
+  if (!directUri) {
+    throw new Error(
+      "authorizationRequestUri / authorizationRequestQrUri missing in Paradym verification response"
+    );
+  }
+
+  const requestUriMatch = directUri.match(/[?&]request_uri=([^&]+)/);
+  const clientIdMatch = directUri.match(/[?&]client_id=([^&]+)/);
+  const clientIdSchemeMatch = directUri.match(/[?&]client_id_scheme=([^&]+)/);
+
+  const requestUri = requestUriMatch ? decodeURIComponent(requestUriMatch[1]) : null;
+  const clientId = clientIdMatch ? decodeURIComponent(clientIdMatch[1]) : null;
+  const clientIdScheme = clientIdSchemeMatch
+    ? decodeURIComponent(clientIdSchemeMatch[1])
+    : null;
+
+  if (!requestUri) {
+    throw new Error("request_uri missing in authorizationRequestUri");
+  }
+
+  let deeplink = "openid4vp://?request_uri=" + encodeURIComponent(requestUri);
+
+  if (clientId) {
+    deeplink += "&client_id=" + encodeURIComponent(clientId);
+  }
+
+  if (clientIdScheme) {
+    deeplink += "&client_id_scheme=" + encodeURIComponent(clientIdScheme);
+  }
+
+  return {
+    type: "verification",
+    deeplink
+  };
+}
+
+
+
+
 
 function callPlaygroundBackend(action) {
   const baseUrl = PLAYGROUND_URL || "https://playground.animo.id/api/";
