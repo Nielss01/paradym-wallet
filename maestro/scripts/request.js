@@ -1,5 +1,5 @@
 function request() {
-  const actionRaw = ACTION || "{}";
+  const actionRaw = ACTION;
 
   let action;
   try {
@@ -44,29 +44,66 @@ function callParadymBackend(action) {
 
   let url;
   let body;
+  let parser
 
   if (action.action === "createOffer") {
     url = `${baseUrl}/v1/projects/${projectId}/${flow}/issuance/offer`;
 
-    body = JSON.stringify({
-      credentials: [
-        {
-          credentialTemplateId: "cmiripaap0026s601f95yqz79",
+    if (flow === "didcomm") {
+      body = JSON.stringify({
+        didcommInvitation: {
+          createConnection: true,
+          did: "did:web",
+        },
+        credential: {
+          credentialTemplateId: "cmiwwctqy00bos601zfwzl8lp",
           attributes: { name: "Niels" },
         },
-      ],
-    });
+      });
+
+      parser = parseParadymDidcommOfferResponse;
+    } else if (flow === "openid4vc") {
+      body = JSON.stringify({
+        credentials: [
+          {
+            credentialTemplateId: "cmiripaap0026s601f95yqz79",
+            attributes: { name: "Niels" },
+          },
+        ],
+      });
+
+      parser = parseParadymOfferResponse;
+    } else {
+      throw new Error(`Unsupported flow for createOffer: ${flow}`);
+    }
   }
+
 
   if (action.action === "createVerification") {
-    url = `${baseUrl}/v1/projects/${projectId}/${flow}/verification/request`;
+    if (flow === "didcomm") {
+      url = `${baseUrl}/v1/projects/${projectId}/didcomm/verification/request`;
+      console.log(url)
 
-    body = JSON.stringify({
-      presentationTemplateId: "cmiropet7005os601nhd8w0ur", // hardcoded for now
-    });
+      body = JSON.stringify({
+        didcommInvitation: {
+          createConnection: true,
+          did: "did:web",
+        },
+        presentationTemplateId: "cmiu7ae2j009es601f9bxw7xk", // hardcoded
+      });
+
+      parser = parseParadymDidcommVerificationResponse;
+    } else {      url = `${baseUrl}/v1/projects/${projectId}/${flow}/verification/request`;
+
+      body = JSON.stringify({
+        presentationTemplateId: "cmiropet7005os601nhd8w0ur",
+      });
+
+      parser = parseParadymVerificationResponse;
+    }
   }
 
-  if (!url || !body) {
+  if (!url || !body || !parser) {
     throw new Error("Unsupported action: " + action.action);
   }
 
@@ -83,20 +120,17 @@ function callParadymBackend(action) {
   }
 
   const data = json(response.body);
+
   if (!data) {
     throw new Error("Empty response from Paradym backend");
   }
 
-  if (action.action === "createVerification") {
-    return parseParadymVerificationResponse(data);
-  }
-
-  return parseParadymOfferResponse(data);
+  return parser(data);
 }
 
 
 
-function parseParadymOfferResponse(data) {
+function parseParadymOpenid4vcOfferResponse(data) {
   const offerQrUri = data.offerUri
   if (!offerQrUri) {
     throw new Error("offerQrUri missing in Paradym response");
@@ -118,15 +152,13 @@ function parseParadymOfferResponse(data) {
       "openid-credential-offer://?credential_offer_uri=" +
       encodeURIComponent(credentialOfferUri);
 
-    console.log("credentialOfferUri:", credentialOfferUri);
-    console.log("openidDeeplink:", openidDeeplink);
   } catch (e) {
     throw new Error("Could not create the deeplink: " + e.message);
   }
 
 
   const deeplink = openidDeeplink
-  console.log9("deeplink", deeplink)
+  console.log("deeplink", deeplink)
 
   return {
     type: "offer",
@@ -135,12 +167,58 @@ function parseParadymOfferResponse(data) {
   };
 }
 
+function parseParadymDidcommOfferResponse(data) {
+  if (!data || !data.didcommInvitation) {
+    throw new Error("didcommInvitation missing in Paradym didcomm response");
+  }
+
+  const invitationUrl = data.didcommInvitation.invitationUri;
+  console.log(invitationUrl)
+
+  if (!invitationUrl) {
+    throw new Error("invitationUri missing in didcommInvitation");
+  }
+
+  const deeplink =
+    "didcomm://?oobUrl=" + encodeURIComponent(invitationUrl);
+  
+  console.log(deeplink)
+
+  return {
+    type: "offer",
+    exchange: "didcomm",
+    deeplink,
+  };
+}
+
+function parseParadymDidcommVerificationResponse(data) {
+  if (!data || !data.didcommInvitation) {
+    throw new Error("didcommInvitation missing in Paradym didcomm verification response");
+  }
+
+  const invitation = data.didcommInvitation;
+  const invitationUrl = invitation.invitationUri;
+
+  if (!invitationUrl) {
+    throw new Error("invitationUri missing in didcommInvitation");
+  }
+
+  const deeplink =
+    "didcomm://?oobUrl=" + encodeURIComponent(invitationUrl);
+
+  return {
+    type: "verification",
+    exchange: "didcomm",
+    deeplink,
+  };
+}
+
+
 function parseParadymVerificationResponse(data) {
   if (!data) {
     throw new Error("Empty response from verification request");
   }
 
-  // Probeer eerst alle mogelijke velden:
   const directUri =
     data.authorizationRequestUri
 
@@ -181,9 +259,6 @@ function parseParadymVerificationResponse(data) {
 }
 
 
-
-
-
 function callPlaygroundBackend(action) {
   const baseUrl = PLAYGROUND_URL || "https://playground.animo.id/api/";
 
@@ -209,11 +284,9 @@ function callPlaygroundBackend(action) {
     return parseOfferResponse(data);
   }
 
-  // createVerification
   return parseVerificationResponse(data);
 }
 
-// ========== REQUEST BUILDERS ==========
 
 function buildOfferRequest(baseUrl, action) {
   return {
@@ -239,8 +312,6 @@ function buildVerificationRequest(baseUrl) {
     }),
   };
 }
-
-// ========== RESPONSE PARSERS ==========
 
 function parseOfferResponse(data) {
   if (!data.issuanceSession) throw new Error("issuanceSession missing");
